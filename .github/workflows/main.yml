@@ -1,66 +1,48 @@
-name: CI-RDP-Winget-Final-Fix
-
-on: [push, workflow_dispatch]
+name: RDP-Cloudflared-Free
+on: workflow_dispatch
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-    - name: Install ngrok via Winget
+    - name: Setup Password Policy
       run: |
-        # Install ngrok
-        winget install ngrok -s msstore --accept-source-agreements --accept-package-agreements
-        
-        # Refresh Path
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-        
-        # Cek instalasi
-        ngrok --version
-      shell: powershell
-
-    - name: Auth ngrok
-      run: |
-        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-      shell: powershell
-
-    - name: Setup RDP User & Security Fix
-      run: |
-        # 1. Paksa matikan complexity requirement di level OS
+        # Matiin password complexity biar gak error pas bikin user
         secedit /export /cfg config.inf
         (Get-Content config.inf) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | Set-Content config.inf
         secedit /configure /db $env:windir\security\local.sdb /cfg config.inf /areas SECURITYPOLICY
-        
-        # 2. Enable RDP Settings
+      shell: powershell
+
+    - name: Setup RDP User & Settings
+      run: |
+        # Aktifkan RDP
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         
-        # 3. Create User Rapz dengan Password Baru
+        # Bikin User Baru
         $name = "Rapz"
         $password = "RapzzPw@123#"
         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-        
-        # Cek dulu apakah user sudah ada (biar gak error kalau re-run)
-        if (Get-LocalUser -Name $name -ErrorAction SilentlyContinue) {
-            Remove-LocalUser -Name $name
-        }
-        
         New-LocalUser -Name $name -Password $securePass -Description "RDP User" -AccountNeverExpires
         Add-LocalGroupMember -Group "Administrators" -Member $name
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member $name
-        
-        Write-Host "User $name created successfully!" -ForegroundColor Green
       shell: powershell
 
-    - name: Create Tunnel & Show Info
+    - name: Install & Run Cloudflared (No Login)
       run: |
-        Write-Host "`n==============================" -ForegroundColor Cyan
+        # Download Cloudflared executable
+        Invoke-WebRequest -Uri https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
+        
+        Write-Host "==============================" -ForegroundColor Cyan
         Write-Host "   RDP READY TO CONNECT!" -ForegroundColor Green
         Write-Host "==============================" -ForegroundColor Cyan
         Write-Host "Username : Rapz"
         Write-Host "Password : RapzzPw@123#"
         Write-Host "==============================`n"
+        Write-Host "Tunggu sebentar, lagi nyari URL tunnel..." -ForegroundColor Yellow
         
-        # Jalankan ngrok tunnel
-        ngrok tcp 3389
+        # Jalankan tunnel tanpa login (Quick Tunnel)
+        # Port RDP default adalah 3389
+        .\cloudflared.exe tunnel --url tcp://localhost:3389
       shell: powershell
