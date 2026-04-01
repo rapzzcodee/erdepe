@@ -1,4 +1,4 @@
-name: RDP-Rapzz-Ngrok
+name: RDP-Rapzz-Ngrok-V2
 on: workflow_dispatch
 
 jobs:
@@ -32,20 +32,24 @@ jobs:
           echo "RDP_USER=Rapzz" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
 
-      - name: Install and Setup ngrok
+      - name: Install ngrok via Chocolatey
         run: |
-          Invoke-WebRequest https://bin.equinox.io/c/b34edq6tiW5/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath .
-          .\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          # Pake choco biar gak ribet urusan link download basi
+          choco install ngrok -y
+          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
         shell: powershell
 
       - name: Open ngrok Tunnel
         run: |
-          Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep -Seconds 12
+          # Jalankan tunnel TCP untuk port RDP
+          Start-Process -FilePath "ngrok" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 15
+          
+          # Ambil URL public dari API local ngrok
           $ngrok_api = Invoke-RestMethod http://localhost:4040/api/tunnels
           $public_url = $ngrok_api.tunnels[0].public_url
-          # Bersihin format "tcp://" dari URL biar tinggal host:port
+          
+          # Bersihkan prefix tcp://
           $clean_url = $public_url -replace "tcp://", ""
           echo "NGROK_URL=$clean_url" >> $env:GITHUB_ENV
         shell: powershell
@@ -53,16 +57,18 @@ jobs:
       - name: Final Info & Stay Alive
         run: |
           Write-Host "`n==============================" -ForegroundColor Cyan
-          Write-Host "   RDP NGROK BYPASS READY!" -ForegroundColor Green
+          Write-Host "   RDP NGROK BYPASS ONLINE!" -ForegroundColor Green
           Write-Host "==============================" -ForegroundColor Cyan
           Write-Host "Address  : $env:NGROK_URL" -ForegroundColor Yellow
           Write-Host "Username : $env:RDP_USER"
           Write-Host "Password : $env:RDP_PASS"
           Write-Host "==============================" -ForegroundColor Cyan
-          Write-Host "Note: Connect pake Remote Desktop Connection (mstsc)"
+          Write-Host "Cara Connect: Buka Remote Desktop Connection (MSTSC),"
+          Write-Host "Paste address di atas, lalu login pake user Rapzz."
           
+          # Keep runner alive biar gak mati
           while ($true) {
             $date = Get-Date -Format "HH:mm:ss"
-            Write-Host "[$date] Connection still active... 🔥"
+            Write-Host "[$date] Tunnel status: Active 🚀"
             Start-Sleep -Seconds 300
           }
