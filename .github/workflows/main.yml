@@ -1,25 +1,49 @@
-name: CI
+name: CI-RDP-Winget
 
 on: [push, workflow_dispatch]
 
 jobs:
   build:
-
     runs-on: windows-latest
-
     steps:
-    - name: Download
-      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-    - name: Extract
-      run: Expand-Archive ngrok.zip
-    - name: Auth
-      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-    - name: Enable TS
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
-    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-    - run: Set-LocalUser -Name "RapzPw" -Password (ConvertTo-SecureString -AsPlainText "RapzPw123" -Force)
-    - name: Create Tunnel
-      run: .\ngrok\ngrok.exe tcp 3389
+    - name: Install ngrok via Winget
+      run: |
+        # Install ngrok dari Microsoft Store source (paling update)
+        winget install ngrok -s msstore --accept-source-agreements --accept-package-agreements
+        
+        # Refresh env path biar command 'ngrok' langsung bisa dipanggil
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        
+        # Cek apakah ngrok sudah terpasang
+        ngrok --version
+      shell: powershell
+
+    - name: Auth ngrok
+      run: |
+        ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+      shell: powershell
+
+    - name: Setup RDP User & Settings
+      run: |
+        # Enable RDP
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        
+        # Bikin User Baru: Rapz (lebih stabil daripada timpa user sistem)
+        $name = "Rapz"
+        $pass = ConvertTo-SecureString "RapzPw123" -AsPlainText -Force
+        New-LocalUser -Name $name -Password $pass -Description "RDP User"
+        Add-LocalGroupMember -Group "Administrators" -Member $name
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member $name
+      shell: powershell
+
+    - name: Create Tunnel & Show Info
+      run: |
+        Write-Host "Starting Tunnel... Silakan cek dashboard ngrok untuk URL TCP-nya." -ForegroundColor Cyan
+        Write-Host "Username: Rapz" -ForegroundColor Green
+        Write-Host "Password: RapzPw123" -ForegroundColor Green
+        
+        # Jalankan tunnel TCP port 3389
+        ngrok tcp 3389
+      shell: powershell
