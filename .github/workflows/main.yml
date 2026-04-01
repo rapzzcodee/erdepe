@@ -1,94 +1,25 @@
-name: RDP-Rapzz-Fix-Final
-on: workflow_dispatch
+name: CI
+
+on: [push, workflow_dispatch]
 
 jobs:
-  secure-rdp:
+  build:
+
     runs-on: windows-latest
-    timeout-minutes: 3600
 
     steps:
-      - name: Disable Windows Password Complexity
-        run: |
-          secedit /export /cfg config.inf
-          (Get-Content config.inf) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | Set-Content config.inf
-          secedit /configure /db $env:windir\security\local.sdb /cfg config.inf /areas SECURITYPOLICY
-          Remove-Item config.inf
-
-      - name: Configure Core RDP Settings
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP-Port" dir=in action=allow protocol=TCP localport=3389
-          Restart-Service -Name TermService -Force
-
-      - name: Create RDP User Rapzz
-        run: |
-          $password = "RapzzPw123" 
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "Rapzz" -Password $securePass -Description "RDP User" -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "Rapzz"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Rapzz"
-          echo "RDP_USER=Rapzz" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
-
-      - name: Install and Start ngrok (Force Path)
-        run: |
-          # Install pake Choco aja, lebih gercep di GitHub Runner dibanding winget
-          choco install ngrok -y
-          
-          # Force refresh path biar command 'ngrok' langsung bisa dipake
-          $env:Path += ";C:\ProgramData\chocolatey\bin"
-          
-          # Add Auth Token
-          ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          
-          # Start Tunnel pake Path Lengkap biar nggak nyasar
-          Write-Host "Starting ngrok tunnel..."
-          Start-Process -FilePath "C:\ProgramData\chocolatey\bin\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
-          
-          # Kasih waktu lebih lama (30 detik) biar ngrok bener-bener konek ke server global
-          Start-Sleep -Seconds 30
-        shell: powershell
-
-      - name: Get Public URL with Retry Logic
-        run: |
-          $maxRetries = 10
-          $retryCount = 0
-          $ngrok_api = $null
-          
-          while ($null -eq $ngrok_api -and $retryCount -lt $maxRetries) {
-            try {
-              $ngrok_api = Invoke-RestMethod http://localhost:4040/api/tunnels
-            } catch {
-              Write-Host "Waiting for ngrok API... (Attempt $($retryCount + 1))"
-              Start-Sleep -Seconds 5
-              $retryCount++
-            }
-          }
-
-          if ($null -eq $ngrok_api) {
-            Write-Error "Ngrok gagal jalan atau API tidak merespon!"
-            exit 1
-          }
-
-          $public_url = $ngrok_api.tunnels[0].public_url
-          $clean_url = $public_url -replace "tcp://", ""
-          echo "NGROK_URL=$clean_url" >> $env:GITHUB_ENV
-        shell: powershell
-
-      - name: Final Output & Stay Alive
-        run: |
-          Write-Host "`n==============================" -ForegroundColor Cyan
-          Write-Host "   RDP FIX SUCCESS!" -ForegroundColor Green
-          Write-Host "==============================" -ForegroundColor Cyan
-          Write-Host "Host     : $env:NGROK_URL" -ForegroundColor Yellow
-          Write-Host "User     : $env:RDP_USER"
-          Write-Host "Pass     : $env:RDP_PASS"
-          Write-Host "==============================`n"
-          
-          while ($true) {
-            $date = Get-Date -Format "HH:mm:ss"
-            Write-Host "[$date] Connection still alive... 🔥"
-            Start-Sleep -Seconds 300
-          }
+    - name: Download
+      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+    - name: Extract
+      run: Expand-Archive ngrok.zip
+    - name: Auth
+      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+    - name: Enable TS
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
+    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+    - run: Set-LocalUser -Name "RapzPw" -Password (ConvertTo-SecureString -AsPlainText "RapzPw123" -Force)
+    - name: Create Tunnel
+      run: .\ngrok\ngrok.exe tcp 3389
