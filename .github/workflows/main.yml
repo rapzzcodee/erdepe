@@ -1,4 +1,4 @@
-name: RDP-Serveo-Direct
+name: RDP-LocalhostRun-Direct
 on: workflow_dispatch
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         
-        # Bikin User Baru
+        # Bikin User Baru: Rapz
         $name = "Rapz"
         $password = "RapzzPw@123#"
         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
@@ -33,25 +33,26 @@ jobs:
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member $name
       shell: powershell
 
-    - name: Connect to Serveo (Direct Tunnel)
+    - name: Connect to Localhost.run (Direct Tunnel)
       run: |
         Write-Host "`n==============================" -ForegroundColor Cyan
-        Write-Host "   RDP SERVEO DIRECT READY!" -ForegroundColor Green
+        Write-Host "   RDP DIRECT CONNECT READY!" -ForegroundColor Green
         Write-Host "==============================" -ForegroundColor Cyan
         Write-Host "Username : Rapz"
         Write-Host "Password : RapzzPw@123#"
         Write-Host "==============================`n"
         Write-Host "CARA KONEK:" -ForegroundColor Yellow
-        Write-Host "1. Tunggu log di bawah muncul tulisan 'Forwarding TCP connections from serveo.net:XXXXX'"
-        Write-Host "2. Buka RDP (MSTSC) di Laptop lo, masukin alamat 'serveo.net:XXXXX'"
+        Write-Host "1. Tunggu log di bawah muncul URL (contoh: xxxx.lhr.life)"
+        Write-Host "2. Buka RDP (MSTSC) di Laptop lo, masukin URL itu di kolom Computer."
         Write-Host "3. Login pake user Rapz tadi."
         Write-Host "==============================`n"
 
         # Loop biar tunnel tetep idup kalau sempet keganggu
         while($true) {
-          Write-Host "[$(Get-Date)] Membuka Tunnel SSH ke Serveo..." -ForegroundColor Gray
-          # -R 0:localhost:3389 -> Serveo bakal kasih port random buat port RDP lo
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 0:localhost:3389 serveo.net
+          Write-Host "[$(Get-Date)] Membuka Tunnel SSH ke Localhost.run..." -ForegroundColor Gray
+          # nokey@localhost.run adalah user default untuk tunnel tanpa login
+          # -R 80:localhost:3389 -> Meminta port 80 publik diarahkan ke RDP lo
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 80:localhost:3389 nokey@localhost.run
           Write-Host "[$(Get-Date)] Tunnel terputus, mencoba menyambung ulang dalam 5 detik..." -ForegroundColor Red
           Start-Sleep -Seconds 5
         }
