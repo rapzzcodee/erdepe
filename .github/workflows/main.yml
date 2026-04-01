@@ -1,4 +1,4 @@
-name: RDP-Rapzz-Winget-Version
+name: RDP-Rapzz-Fix-Final
 on: workflow_dispatch
 
 jobs:
@@ -32,43 +32,63 @@ jobs:
           echo "RDP_USER=Rapzz" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
 
-      - name: Install ngrok via Winget
+      - name: Install and Start ngrok (Force Path)
         run: |
-          # Install pake command dari dokumentasi yang lo kasih
-          winget install ngrok -s msstore --accept-source-agreements --accept-package-agreements
+          # Install pake Choco aja, lebih gercep di GitHub Runner dibanding winget
+          choco install ngrok -y
           
-          # Refresh path supaya command 'ngrok' langsung dikenali
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          # Force refresh path biar command 'ngrok' langsung bisa dipake
+          $env:Path += ";C:\ProgramData\chocolatey\bin"
           
-          # Tambahin Authtoken
+          # Add Auth Token
           ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          
+          # Start Tunnel pake Path Lengkap biar nggak nyasar
+          Write-Host "Starting ngrok tunnel..."
+          Start-Process -FilePath "C:\ProgramData\chocolatey\bin\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          
+          # Kasih waktu lebih lama (30 detik) biar ngrok bener-bener konek ke server global
+          Start-Sleep -Seconds 30
         shell: powershell
 
-      - name: Start ngrok Tunnel
+      - name: Get Public URL with Retry Logic
         run: |
-          # Jalankan tunnel TCP port 3389
-          Start-Process -FilePath "ngrok" -ArgumentList "tcp 3389" -WindowStyle Hidden
-          Start-Sleep -Seconds 15
+          $maxRetries = 10
+          $retryCount = 0
+          $ngrok_api = $null
           
-          # Ambil URL public
-          $ngrok_api = Invoke-RestMethod http://localhost:4040/api/tunnels
+          while ($null -eq $ngrok_api -and $retryCount -lt $maxRetries) {
+            try {
+              $ngrok_api = Invoke-RestMethod http://localhost:4040/api/tunnels
+            } catch {
+              Write-Host "Waiting for ngrok API... (Attempt $($retryCount + 1))"
+              Start-Sleep -Seconds 5
+              $retryCount++
+            }
+          }
+
+          if ($null -eq $ngrok_api) {
+            Write-Error "Ngrok gagal jalan atau API tidak merespon!"
+            exit 1
+          }
+
           $public_url = $ngrok_api.tunnels[0].public_url
           $clean_url = $public_url -replace "tcp://", ""
           echo "NGROK_URL=$clean_url" >> $env:GITHUB_ENV
         shell: powershell
 
-      - name: Show Info & Keep Alive
+      - name: Final Output & Stay Alive
         run: |
           Write-Host "`n==============================" -ForegroundColor Cyan
-          Write-Host "   RDP WINGET VERSION READY!" -ForegroundColor Green
+          Write-Host "   RDP FIX SUCCESS!" -ForegroundColor Green
           Write-Host "==============================" -ForegroundColor Cyan
-          Write-Host "Address  : $env:NGROK_URL" -ForegroundColor Yellow
-          Write-Host "Username : $env:RDP_USER"
-          Write-Host "Password : $env:RDP_PASS"
-          Write-Host "==============================" -ForegroundColor Cyan
+          Write-Host "Host     : $env:NGROK_URL" -ForegroundColor Yellow
+          Write-Host "User     : $env:RDP_USER"
+          Write-Host "Pass     : $env:RDP_PASS"
+          Write-Host "==============================`n"
           
           while ($true) {
             $date = Get-Date -Format "HH:mm:ss"
-            Write-Host "[$date] Stayin' alive... 🕺"
+            Write-Host "[$date] Connection still alive... 🔥"
             Start-Sleep -Seconds 300
           }
