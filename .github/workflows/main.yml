@@ -1,4 +1,4 @@
-name: CI-RDP-Winget
+name: CI-RDP-Winget-Fixed
 
 on: [push, workflow_dispatch]
 
@@ -8,13 +8,13 @@ jobs:
     steps:
     - name: Install ngrok via Winget
       run: |
-        # Install ngrok dari Microsoft Store source (paling update)
+        # Paksa install pake winget sesuai request
         winget install ngrok -s msstore --accept-source-agreements --accept-package-agreements
         
-        # Refresh env path biar command 'ngrok' langsung bisa dipanggil
+        # Refresh Path biar command 'ngrok' langsung ke-detect
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
         
-        # Cek apakah ngrok sudah terpasang
+        # Cek versi buat mastiin udah terinstall
         ngrok --version
       shell: powershell
 
@@ -25,25 +25,36 @@ jobs:
 
     - name: Setup RDP User & Settings
       run: |
-        # Enable RDP
+        # 1. Enable RDP & Matikan User Auth Layer biar gampang konek
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         
-        # Bikin User Baru: Rapz (lebih stabil daripada timpa user sistem)
+        # 2. Bikin User Baru dengan Password Kuat
         $name = "Rapz"
-        $pass = ConvertTo-SecureString "RapzPw@123#" -AsPlainText -Force
-        New-LocalUser -Name $name -Password $pass -Description "RDP User"
+        $password = "RapzzPw@123#"
+        $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+        
+        # Create user dengan password baru lo
+        New-LocalUser -Name $name -Password $securePass -Description "RDP User" -AccountNeverExpires
+        
+        # 3. Masukin ke grup Admin & RDP
         Add-LocalGroupMember -Group "Administrators" -Member $name
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member $name
+        
+        Write-Host "User $name berhasil dibuat dengan password baru!" -ForegroundColor Green
       shell: powershell
 
     - name: Create Tunnel & Show Info
       run: |
-        Write-Host "Starting Tunnel... Silakan cek dashboard ngrok untuk URL TCP-nya." -ForegroundColor Cyan
-        Write-Host "Username: Rapz" -ForegroundColor Green
-        Write-Host "Password: RapzPw@123#" -ForegroundColor Green
+        Write-Host "`n==============================" -ForegroundColor Cyan
+        Write-Host "   RDP READY TO CONNECT!" -ForegroundColor Green
+        Write-Host "==============================" -ForegroundColor Cyan
+        Write-Host "Username : Rapz"
+        Write-Host "Password : RapzzPw@123#"
+        Write-Host "==============================`n"
+        Write-Host "Cek Dashboard Ngrok atau log di bawah buat URL TCP-nya..."
         
-        # Jalankan tunnel TCP port 3389
+        # Start ngrok tunnel
         ngrok tcp 3389
       shell: powershell
