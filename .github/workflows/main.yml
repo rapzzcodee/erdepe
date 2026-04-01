@@ -1,4 +1,4 @@
-Name: RDP-Rapzz
+name: RDP-Rapzz
 on: workflow_dispatch
 
 jobs:
