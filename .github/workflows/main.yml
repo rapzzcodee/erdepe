@@ -1,4 +1,4 @@
-name: RDP-Rapzz
+name: RDP-Rapzz-Ngrok
 on: workflow_dispatch
 
 jobs:
@@ -9,13 +9,9 @@ jobs:
     steps:
       - name: Disable Windows Password Complexity
         run: |
-          # Export policy saat ini ke file teks
           secedit /export /cfg config.inf
-          # Ganti nilai PasswordComplexity dari 1 (on) ke 0 (off)
           (Get-Content config.inf) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | Set-Content config.inf
-          # Apply kembali policy yang sudah dimodifikasi
           secedit /configure /db $env:windir\security\local.sdb /cfg config.inf /areas SECURITYPOLICY
-          # Hapus file sampah
           Remove-Item config.inf
 
       - name: Configure Core RDP Settings
@@ -23,55 +19,50 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall add rule name="RDP-Port" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User Rapzz
         run: |
-          # Sekarang kamu bisa pakai password simpel tanpa kena error
-          $password = "RapzzPw" 
+          $password = "RapzzPw123" 
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          
           New-LocalUser -Name "Rapzz" -Password $securePass -Description "RDP User" -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "Rapzz"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Rapzz"
-          
           echo "RDP_USER=Rapzz" >> $env:GITHUB_ENV
           echo "RDP_PASS=$password" >> $env:GITHUB_ENV
 
-      - name: Install Tailscale
+      - name: Install and Setup ngrok
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          Invoke-WebRequest https://bin.equinox.io/c/b34edq6tiW5/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath .
+          .\ngrok.exe config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        shell: powershell
 
-      - name: Establish Tailscale Connection
+      - name: Open ngrok Tunnel
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=rapzz-runner
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-            $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-            Start-Sleep -Seconds 5
-            $retries++
-          }
-          if (-not $tsIP) { Write-Error "Tailscale IP gagal didapat!"; exit 1 }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 12
+          $ngrok_api = Invoke-RestMethod http://localhost:4040/api/tunnels
+          $public_url = $ngrok_api.tunnels[0].public_url
+          # Bersihin format "tcp://" dari URL biar tinggal host:port
+          $clean_url = $public_url -replace "tcp://", ""
+          echo "NGROK_URL=$clean_url" >> $env:GITHUB_ENV
+        shell: powershell
 
-      - name: Maintain Connection & Show Info
+      - name: Final Info & Stay Alive
         run: |
           Write-Host "`n==============================" -ForegroundColor Cyan
-          Write-Host "   RDP BYPASS SUCCESS!" -ForegroundColor Green
+          Write-Host "   RDP NGROK BYPASS READY!" -ForegroundColor Green
           Write-Host "==============================" -ForegroundColor Cyan
-          Write-Host "IP Address : $env:TAILSCALE_IP"
-          Write-Host "Username   : $env:RDP_USER"
-          Write-Host "Password   : $env:RDP_PASS"
-          Write-Host "==============================`n"
+          Write-Host "Address  : $env:NGROK_URL" -ForegroundColor Yellow
+          Write-Host "Username : $env:RDP_USER"
+          Write-Host "Password : $env:RDP_PASS"
+          Write-Host "==============================" -ForegroundColor Cyan
+          Write-Host "Note: Connect pake Remote Desktop Connection (mstsc)"
+          
           while ($true) {
             $date = Get-Date -Format "HH:mm:ss"
-            Write-Host "[$date] Stayin' alive... 🕺"
+            Write-Host "[$date] Connection still active... 🔥"
             Start-Sleep -Seconds 300
           }
