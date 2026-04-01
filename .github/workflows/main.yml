@@ -32,7 +32,7 @@ jobs:
         
         # Bikin User Baru: Rapz (lebih stabil daripada timpa user sistem)
         $name = "Rapz"
-        $pass = ConvertTo-SecureString "RapzPw123" -AsPlainText -Force
+        $pass = ConvertTo-SecureString "RapzPw@123#" -AsPlainText -Force
         New-LocalUser -Name $name -Password $pass -Description "RDP User"
         Add-LocalGroupMember -Group "Administrators" -Member $name
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member $name
@@ -42,7 +42,7 @@ jobs:
       run: |
         Write-Host "Starting Tunnel... Silakan cek dashboard ngrok untuk URL TCP-nya." -ForegroundColor Cyan
         Write-Host "Username: Rapz" -ForegroundColor Green
-        Write-Host "Password: RapzPw123" -ForegroundColor Green
+        Write-Host "Password: RapzPw@123#" -ForegroundColor Green
         
         # Jalankan tunnel TCP port 3389
         ngrok tcp 3389
