@@ -1,4 +1,4 @@
-name: RDP-Cloudflared-Free
+name: RDP-Serveo-Direct
 on: workflow_dispatch
 
 jobs:
@@ -7,7 +7,7 @@ jobs:
     steps:
     - name: Setup Password Policy
       run: |
-        # Matiin password complexity biar gak error pas bikin user
+        # Matiin password complexity biar gak rewel
         secedit /export /cfg config.inf
         (Get-Content config.inf) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | Set-Content config.inf
         secedit /configure /db $env:windir\security\local.sdb /cfg config.inf /areas SECURITYPOLICY
@@ -15,7 +15,7 @@ jobs:
 
     - name: Setup RDP User & Settings
       run: |
-        # Aktifkan RDP
+        # Aktifkan RDP & Firewall
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
@@ -24,25 +24,35 @@ jobs:
         $name = "Rapz"
         $password = "RapzzPw@123#"
         $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+        
+        # Hapus dulu kalau usernya udah ada (biar gak error pas re-run)
+        if (Get-LocalUser -Name $name -ErrorAction SilentlyContinue) { Remove-LocalUser -Name $name }
+        
         New-LocalUser -Name $name -Password $securePass -Description "RDP User" -AccountNeverExpires
         Add-LocalGroupMember -Group "Administrators" -Member $name
         Add-LocalGroupMember -Group "Remote Desktop Users" -Member $name
       shell: powershell
 
-    - name: Install & Run Cloudflared (No Login)
+    - name: Connect to Serveo (Direct Tunnel)
       run: |
-        # Download Cloudflared executable
-        Invoke-WebRequest -Uri https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
-        
-        Write-Host "==============================" -ForegroundColor Cyan
-        Write-Host "   RDP READY TO CONNECT!" -ForegroundColor Green
+        Write-Host "`n==============================" -ForegroundColor Cyan
+        Write-Host "   RDP SERVEO DIRECT READY!" -ForegroundColor Green
         Write-Host "==============================" -ForegroundColor Cyan
         Write-Host "Username : Rapz"
         Write-Host "Password : RapzzPw@123#"
         Write-Host "==============================`n"
-        Write-Host "Tunggu sebentar, lagi nyari URL tunnel..." -ForegroundColor Yellow
-        
-        # Jalankan tunnel tanpa login (Quick Tunnel)
-        # Port RDP default adalah 3389
-        .\cloudflared.exe tunnel --url tcp://localhost:3389
+        Write-Host "CARA KONEK:" -ForegroundColor Yellow
+        Write-Host "1. Tunggu log di bawah muncul tulisan 'Forwarding TCP connections from serveo.net:XXXXX'"
+        Write-Host "2. Buka RDP (MSTSC) di Laptop lo, masukin alamat 'serveo.net:XXXXX'"
+        Write-Host "3. Login pake user Rapz tadi."
+        Write-Host "==============================`n"
+
+        # Loop biar tunnel tetep idup kalau sempet keganggu
+        while($true) {
+          Write-Host "[$(Get-Date)] Membuka Tunnel SSH ke Serveo..." -ForegroundColor Gray
+          # -R 0:localhost:3389 -> Serveo bakal kasih port random buat port RDP lo
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -R 0:localhost:3389 serveo.net
+          Write-Host "[$(Get-Date)] Tunnel terputus, mencoba menyambung ulang dalam 5 detik..." -ForegroundColor Red
+          Start-Sleep -Seconds 5
+        }
       shell: powershell
